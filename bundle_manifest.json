@@ -1,0 +1,7 @@
+{
+  "skills": [
+    "medical-rag-data-cleaning",
+    "generic-rag-data-cleaning"
+  ],
+  "target_path": "~/.hermes/skills/data-science/"
+}
