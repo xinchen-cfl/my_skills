@@ -1,6 +1,6 @@
 ---
-name: us-proxy-browser-setup
-description: 当需要在安装了 Clash 或 Mihomo 的电脑或安卓设备上，用已有分流订阅、中转节点和固定 HTTP/SOCKS5 出口配置稳定链路时使用；适用于浏览器和应用流量验证，不保证隐藏设备指纹或改变账号风控结果。
+name: claude-clean-environment
+description: 为 Claude 在电脑或安卓设备上配置基于 Clash 或 Mihomo 的规则分流、链式中转和固定出口，并验证公网 IP、DNS、IPv6 与 WebRTC；不保证隐藏设备指纹或改变账号风控结果。
 ---
 
 # Clash 链式出口最小配置
