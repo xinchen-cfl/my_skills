@@ -97,6 +97,8 @@ proxy-groups:
 
 机场订阅通过 `proxy-providers.use` 自动更新，静态 `proxies` 只作为客户端兼容备用。不要把 NTT 节点写进会被订阅刷新覆盖的 Provider 内容，也不要把前置固定为单个 632，除非明确只允许这一条线路。
 
+完整的已验证分流组结构、规则顺序和自动更新不变量见 [references/routing-strategy.md](references/routing-strategy.md)。
+
 ## DNS、TUN 和规则
 
 ```yaml

@@ -115,6 +115,8 @@ proxy-groups:
 
 ## 分流策略
 
+完整的已验证组结构、规则顺序和自动更新不变量见 [references/routing-strategy.md](references/routing-strategy.md)。
+
 将固定出口或直连 VPS 放在国外流量组的第一选择，并把特殊站点规则放在国内规则之前：
 
 ```yaml
