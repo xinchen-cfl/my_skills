@@ -60,6 +60,47 @@ append:
 
 `dialer-proxy` 名称必须与中转节点完全一致。出口服务商只提供 HTTP 时，将 `type` 写成 `http`，不要猜测协议。
 
+### 多节点链式代理组
+
+需要“任意机场节点作为前置，但最终始终从固定 NTT 出口”时，使用两层核心结构：
+
+```text
+↗️上游直连（可选任意机场节点）
+        ↓ 作为 dialer-proxy
+美国 NTT 链式出口（固定最终出口）
+        ↓
+目标网站
+```
+
+```yaml
+proxies:
+  - name: 美国 NTT 链式出口
+    type: socks5
+    server: EXIT_HOST
+    port: EXIT_PORT
+    username: EXIT_USERNAME
+    password: EXIT_PASSWORD
+    dialer-proxy: ↗️上游直连
+    udp: true
+
+proxy-groups:
+  - name: 🔰国外流量
+    type: select
+    proxies:
+      - ↗️上游直连
+      - 美国 NTT 链式出口
+  - name: ↗️上游直连
+    type: select
+    use: [机场订阅]
+    proxies: [静态备用节点]
+```
+
+`↗️上游直连` 同时承担两件事：直接访问目标网站，以及作为 NTT 的上一跳。选择 `🔰国外流量 -> 美国 NTT 链式出口` 时，切换上游节点只会改变到 NTT 的路径，最终公网出口仍是 NTT；选择 `🔰国外流量 -> ↗️上游直连` 时，最终出口则是选中的机场节点。
+
+可以继续保留 `🤖AI服务`、`⚓️其他流量`、`🍎苹果服务`、`❌不代理` 等分类组供查看和规则分流，但不要再为 NTT 单独创建一个固定 632 的前置组。分类组应指向 `🔰国外流量` 或 `↗️上游直连`，核心链路只维护上述两个组。
+
+使用 `proxy-providers.use` 获取自动更新节点，并在 `proxies` 中保留静态备用节点，兼容无法展开 Provider 的客户端。Provider 刷新只更新机场节点；`美国 NTT 链式出口` 和代理组必须保持在主配置/覆写中，避免被订阅覆盖。
+
 ## 覆写文件分工
 
 建议把电脑 profile 拆成独立覆写文件：

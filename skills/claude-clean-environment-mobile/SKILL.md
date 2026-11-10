@@ -56,6 +56,47 @@ proxy-groups:
 
 直接 VPS 和 SOCKS5 链式是两种独立配置，不要同时把 SOCKS5 设为默认出口。直接 VPS 的最终公网 IP 会是 VPS IP，链式配置的最终公网 IP 才是 SOCKS5 出口 IP。
 
+### 推荐的多节点链式结构
+
+如果要从机场节点中任意选择前置，同时让最终公网出口始终保持为固定 NTT，使用两个核心代理组：
+
+```text
+↗️上游直连（任意机场节点）
+        ↓
+美国 NTT 链式出口（固定最终出口）
+        ↓
+目标网站
+```
+
+```yaml
+proxies:
+  - name: 美国 NTT 链式出口
+    type: socks5
+    server: EXIT_HOST
+    port: EXIT_PORT
+    username: EXIT_USERNAME
+    password: EXIT_PASSWORD
+    dialer-proxy: ↗️上游直连
+    udp: true
+
+proxy-groups:
+  - name: 🔰国外流量
+    type: select
+    proxies:
+      - ↗️上游直连
+      - 美国 NTT 链式出口
+  - name: ↗️上游直连
+    type: select
+    use: [机场订阅]
+    proxies: [静态备用节点]
+```
+
+这里的 `↗️上游直连` 既是普通机场直连组，也是 NTT 的 `dialer-proxy`。选择 `🔰国外流量 -> 美国 NTT 链式出口` 后，切换上游节点只改变中继路径，最终公网 IP 仍是 NTT；选择 `🔰国外流量 -> ↗️上游直连` 后，最终公网 IP 是所选机场节点。
+
+`🤖AI服务`、`⚓️其他流量`、`🍎苹果服务`、`❌不代理` 等组可以继续保留在界面中，用于分类规则和人工查看；它们不需要再复制一套 NTT 前置逻辑。将需要代理的分类组指向 `🔰国外流量`，国内规则指向 `DIRECT` 或 `❌不代理`。
+
+机场订阅通过 `proxy-providers.use` 自动更新，静态 `proxies` 只作为客户端兼容备用。不要把 NTT 节点写进会被订阅刷新覆盖的 Provider 内容，也不要把前置固定为单个 632，除非明确只允许这一条线路。
+
 ## DNS、TUN 和规则
 
 ```yaml
