@@ -1,27 +1,94 @@
 ---
 name: claude-clean-environment-mobile
-description: 在安卓 Clash Meta 或 Mihomo 客户端中为 Claude 导入静态 Clash 配置，配置规则分流、TUN、Fake-IP、DNS 和直接 VPS 或链式出口。
+description: 在安卓端（Clash Meta 或 Mihomo）搭建干净稳定的 Claude 出海环境：导入包含静态 IP 链式出口、TUN、Fake-IP DNS 与分流规则的完整静态 YAML，并完成公网 IP、DNS、IPv6 与 WebRTC 防漏验证。
 ---
 
-# Claude 安卓端干净环境
+# Claude 安卓端干净环境（Clash Meta / Mihomo）
 
-适用于支持完整 Clash 配置文件的安卓客户端。安卓端优先导入静态 YAML，不要把节点和完整规则拆到“覆写”页面。
+搭建不触发风控的 Claude 环境，核心只做两件事：**1. 准备一个干净的静态 IP 出口；2. 配置 VPN 分流策略稳定接管流量**。
 
-## 导入静态配置
+安卓端与电脑端不同：**优先整理好一份完整的静态 YAML 直接导入**（内含节点、代理组、TUN、DNS 和分流规则），不要把节点和规则拆到客户端的“覆写”页面，导入后关闭该配置的自动更新。
 
-静态配置应包含 `proxies`、`proxy-groups`、`rules`、TUN 和 DNS。把 YAML 放进手机文件管理器后，在客户端的“配置/文件 -> 导入”中选择它，并关闭该 profile 的自动更新。
+---
 
-导入后确认代理列表同时出现最终出口和代理组。不要只打开编辑器后保存就认为已切换；要返回配置列表并使用这份文件启动 VPN。
+## 标准实操步骤
 
-## 直接 VPS 出口
+### 1. 准备干净的静态 IP 出口
+- **首选方案（静态住宅 SOCKS5/HTTP 链式出口）**：购买干净独享的美国静态住宅代理（例如 NTT 静态住宅 IP），通过日常机场节点做前置中转（`dialer-proxy`）连接。
+- **备选方案（自有美国原生 VPS 直出）**：若自有可直接出站且 IP 干净的美国 VPS，无需叠加链式代理，见文末「附：自有美国 VPS 直接出口」。
 
-如果订阅中的美国 VPS 节点本身可以直接出站，配置只保留一个代理节点，不写 `dialer-proxy`：
+### 2. 编写静态 YAML 核心节点与 TUN / DNS 配置
+1. **写入静态链式出口节点**：在 YAML 的 `proxies` 中添加购买的静态出口，将 `dialer-proxy` 指向前置机场组 `↗️上游直连`：
+   ```text
+   手机 -> ↗️上游直连（任意可用机场节点） -> 美国 NTT 链式出口（固定静态 IP） -> Claude / 目标网站
+   ```
+   ```yaml
+   proxies:
+     - name: 美国 NTT 链式出口
+       type: socks5
+       server: EXIT_HOST
+       port: EXIT_PORT
+       username: EXIT_USERNAME
+       password: EXIT_PASSWORD
+       dialer-proxy: ↗️上游直连
+       udp: true
+   ```
+   *(注：若服务商只给 HTTP 代理则填 `type: http`；不要把真实凭据或公网 IP 写入公开仓库与示例。)*
+
+2. **写入安卓端 TUN 与 Fake-IP DNS 基础块**：
+   ```yaml
+   mode: rule
+   ipv6: false
+   tun:
+     enable: true
+     auto-route: true
+     auto-detect-interface: true
+     dns-hijack:
+       - any:53
+   dns:
+     enable: true
+     enhanced-mode: fake-ip
+     respect-rules: true
+     proxy-server-nameserver:
+       - 223.5.5.5
+       - 119.29.29.29
+   ```
+   - **关键避坑**：开启 `respect-rules: true` 时，`proxy-server-nameserver` **必填不能为空**，否则客户端启动会直接报错；它只负责解析前置机场节点自身的服务器域名，不会让目标网站直连泄露。
+
+### 3. 套用 VPN 分流策略并导入启用
+1. **合入分流策略（见独立文件）**：将 **[references/routing-strategy.md](references/routing-strategy.md)** 中的 `proxy-groups`（两层核心代理组）和 `rules`（AI 域名排在国内 `GEOSITE,cn` / `GEOIP,CN` 之前，`MATCH` 兜底）合入这份静态 YAML。
+2. **导入与激活配置**：
+   - 将 YAML 放入手机后，在客户端「配置 / 文件 -> 导入」选择该文件，并**关闭该 Profile 的自动更新**（机场节点由配置内的 `proxy-providers` 更新，避免整份 YAML 被冲掉）。
+   - 导入或编辑保存后，必须**返回配置列表点击选中这份文件**再启动 VPN（仅保存编辑器不会切换当前生效配置）。
+3. **核对安卓客户端系统开关**：
+   - **模式**：选择「规则模式」（严禁用全局模式替代分流）；
+   - **自动路由系统流量**：开启；
+   - **DNS 劫持**：开启；
+   - **允许应用绕过 VPN**：关闭；
+   - **IPv6**：关闭；
+   - **系统 HTTP 代理**：TUN 开启后无需再开，避免重复代理；
+   - **绕过私有网络**：需访问局域网设备时保留，否则可关闭以严格接管全部流量。
+
+### 4. 启动与防漏验证
+1. 启动 VPN 后进入代理组面板，确认 `🔰国外流量` 已选中 `美国 NTT 链式出口`，`↗️上游直连` 已选中可用机场节点。
+2. 打开 `browserleaks.com` 检查：Public IP 与 WebRTC Public IP 必须一致且显示你的静态出口 IP。
+3. IPv6 Leak 应无公网地址；DNS 检测不应出现国内本地运营商 DNS。
+4. Local IP 中出现 `192.168.0.0/16`、`10.0.0.0/8`、`172.16.0.0/12` 属于局域网或 TUN 私有地址，不是公网泄露。
+5. `udp: true` 仅允许客户端尝试转发 UDP，实际可用性取决于前置节点与静态出口支持情况。
+
+---
+
+## 附：备选模式——自有美国 VPS 直接出口
+
+若自有美国 VPS 可直接国内连接出站，直接保留单节点出站即可，**不写 `dialer-proxy`，也不要与 SOCKS5 链式混设为默认出口**（VPS 直出的公网 IP 是 VPS 自身 IP）：
 
 ```yaml
 proxies:
   - name: 美国 VPS 直连
     type: vless
-    # 其余节点字段使用服务商提供的值
+    server: VPS_HOST
+    port: 443
+    uuid: VPS_UUID
     udp: true
 
 proxy-groups:
@@ -38,113 +105,3 @@ proxy-groups:
     type: select
     proxies: [DIRECT]
 ```
-
-## SOCKS5 链式出口
-
-只有需要固定 SOCKS5 出口时才保留链式节点：
-
-```yaml
-  - name: 固定 SOCKS5 出口
-    type: socks5
-    server: EXIT_HOST
-    port: EXIT_PORT
-    username: EXIT_USERNAME
-    password: EXIT_PASSWORD
-    dialer-proxy: 中转节点
-    udp: true
-```
-
-直接 VPS 和 SOCKS5 链式是两种独立配置，不要同时把 SOCKS5 设为默认出口。直接 VPS 的最终公网 IP 会是 VPS IP，链式配置的最终公网 IP 才是 SOCKS5 出口 IP。
-
-### 推荐的多节点链式结构
-
-如果要从机场节点中任意选择前置，同时让最终公网出口始终保持为固定 NTT，使用两个核心代理组：
-
-```text
-↗️上游直连（任意机场节点）
-        ↓
-美国 NTT 链式出口（固定最终出口）
-        ↓
-目标网站
-```
-
-```yaml
-proxies:
-  - name: 美国 NTT 链式出口
-    type: socks5
-    server: EXIT_HOST
-    port: EXIT_PORT
-    username: EXIT_USERNAME
-    password: EXIT_PASSWORD
-    dialer-proxy: ↗️上游直连
-    udp: true
-
-proxy-groups:
-  - name: 🔰国外流量
-    type: select
-    proxies:
-      - ↗️上游直连
-      - 美国 NTT 链式出口
-  - name: ↗️上游直连
-    type: select
-    use: [机场订阅]
-    proxies: [静态备用节点]
-```
-
-这里的 `↗️上游直连` 既是普通机场直连组，也是 NTT 的 `dialer-proxy`。选择 `🔰国外流量 -> 美国 NTT 链式出口` 后，切换上游节点只改变中继路径，最终公网 IP 仍是 NTT；选择 `🔰国外流量 -> ↗️上游直连` 后，最终公网 IP 是所选机场节点。
-
-`🤖AI服务`、`⚓️其他流量`、`🍎苹果服务`、`❌不代理` 等组可以继续保留在界面中，用于分类规则和人工查看；它们不需要再复制一套 NTT 前置逻辑。将需要代理的分类组指向 `🔰国外流量`，国内规则指向 `DIRECT` 或 `❌不代理`。
-
-机场订阅通过 `proxy-providers.use` 自动更新，静态 `proxies` 只作为客户端兼容备用。不要把 NTT 节点写进会被订阅刷新覆盖的 Provider 内容，也不要把前置固定为单个 632，除非明确只允许这一条线路。
-
-完整的已验证分流组结构、规则顺序和自动更新不变量见 [references/routing-strategy.md](references/routing-strategy.md)。
-
-## DNS、TUN 和规则
-
-```yaml
-mode: rule
-ipv6: false
-tun:
-  enable: true
-  auto-route: true
-  auto-detect-interface: true
-  dns-hijack: [any:53]
-dns:
-  enable: true
-  enhanced-mode: fake-ip
-  respect-rules: true
-  proxy-server-nameserver:
-    - 223.5.5.5
-    - 119.29.29.29
-```
-
-当 `respect-rules: true` 时，`proxy-server-nameserver` 不能为空，否则客户端会报错。它只负责解析代理节点域名，不等于目标网站通过这些 DNS 直连。
-
-把 BrowserLeaks 和 Claude/AI 域名规则放在 `GEOSITE,CN`、`GEOIP,CN` 和 `MATCH` 之前：
-
-```yaml
-rules:
-  - DOMAIN-SUFFIX,browserleaks.com,🔰国外流量
-  # Claude/AI 域名规则
-  # 继续保留订阅的国内规则和其他规则
-```
-
-## 安卓系统选项
-
-- 自动路由系统流量：开启；
-- DNS 劫持：开启；
-- 允许应用绕过 VPN：关闭；
-- IPv6：上游不支持时关闭；
-- TUN 开启后，系统 HTTP 代理不是必须，避免重复代理；
-- 需要访问局域网设备时保留“绕过私有网络”，否则可关闭以严格接管流量。
-
-模式选择规则模式；“不修改”也可以，只要 YAML 中已经是 `mode: rule`。不要选全局模式来替代分流。
-
-## 验证
-
-1. 启动 VPN 后确认代理组选择了正确的最终出口。
-2. BrowserLeaks 的 Public IP 和 WebRTC Public IP 应一致并显示出口 IP。
-3. IPv6 Leak 应无公网地址；DNS 检查不应出现本地运营商 DNS。
-4. `172.16.0.0/12`、`10.0.0.0/8`、`192.168.0.0/16` 出现在 Local IP 是 TUN/局域网私有地址，不是公网泄露。
-5. `udp: true` 只是允许尝试 UDP；是否成功取决于 VPS、链式节点和目标服务的支持。
-
